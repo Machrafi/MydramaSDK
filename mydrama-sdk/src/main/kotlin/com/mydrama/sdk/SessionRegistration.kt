@@ -11,4 +11,9 @@ data class SessionRegistration @JvmOverloads constructor(
     val provider: String? = null,
     val gatePassed: Boolean? = null,
     val riskLevel: String? = null,
-)
+) {
+    override fun toString(): String =
+        "SessionRegistration(registered=$registered, sessionToken=<redacted>, " +
+            "expiresAtEpochMillis=$expiresAtEpochMillis, mode=$mode, provider=$provider, " +
+            "gatePassed=$gatePassed, riskLevel=$riskLevel)"
+}

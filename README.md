@@ -11,6 +11,7 @@ headers to requests.
 - Java 11 bytecode
 - Kotlin or Java
 - OkHttp 4.x
+- No Google Play Services required — works on Fire TV, Fire Tablet, and AOSP devices
 
 ## Install
 
@@ -28,20 +29,66 @@ Then add the dependency:
 
 ```kotlin
 dependencies {
-    implementation("com.github.Machrafi:MydramaSDK:v1.0.0")
+    implementation("com.github.Machrafi:MydramaSDK:v1.0.1")
 }
 ```
 
+## Hiding the API key and base URL
+
+Never put your API key or Worker URL as a plain string in source code — they
+will be visible in your git history and any release ZIP downloaded from GitHub.
+
+Instead, store them in `local.properties` (which is excluded from version
+control by default) and inject them into your app via `BuildConfig`:
+
+**`local.properties`** (never commit this file):
+```properties
+MYDRAMA_API_KEY=your-secret-api-key-here
+MYDRAMA_BASE_URL=https://your-worker.workers.dev
+```
+
+**`app/build.gradle.kts`**:
+```kotlin
+import java.util.Properties
+
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+}
+
+android {
+    defaultConfig {
+        buildConfigField("String", "MYDRAMA_API_KEY",
+            "\"${localProps["MYDRAMA_API_KEY"] ?: ""}\"")
+        buildConfigField("String", "MYDRAMA_BASE_URL",
+            "\"${localProps["MYDRAMA_BASE_URL"] ?: ""}\"")
+    }
+}
+```
+
+Then use in code (as shown in the `examples/` folder):
+
+```kotlin
+MyDramaSDK.initialize(
+    this,
+    BuildConfig.MYDRAMA_API_KEY,
+    MyDramaConfig.build { baseUrl(BuildConfig.MYDRAMA_BASE_URL) },
+)
+```
+
+This way the key is never in source, never in the git history, and never in a
+GitHub release ZIP.
+
 ## Initialize
 
-Initialize once, normally from `Application.onCreate`:
+Initialize once, normally from `Application.onCreate`. Use `BuildConfig` fields
+for the API key and URL — see [Hiding the API key and base URL](#hiding-the-api-key-and-base-url):
 
 ```kotlin
 val myDrama = MyDramaSDK.initialize(
     applicationContext,
-    "YOUR_API_KEY",
+    BuildConfig.MYDRAMA_API_KEY,
     MyDramaConfig.build {
-        baseUrl("https://your-worker-url.workers.dev")
+        baseUrl(BuildConfig.MYDRAMA_BASE_URL)
     },
 )
 ```
@@ -53,10 +100,10 @@ Java:
 
 ```java
 MyDramaConfig config = MyDramaConfig.builder()
-        .baseUrl("https://your-worker-url.workers.dev")
+        .baseUrl(BuildConfig.MYDRAMA_BASE_URL)
         .build();
 MyDramaClient myDrama =
-        MyDramaSDK.initialize(getApplicationContext(), "YOUR_API_KEY", config);
+        MyDramaSDK.initialize(getApplicationContext(), BuildConfig.MYDRAMA_API_KEY, config);
 ```
 
 ## Make requests
@@ -82,25 +129,25 @@ without MyDrama headers.
 
 ## Custom Worker URL
 
-Set your Worker URL in the config:
+Set your Worker URL in the config using `BuildConfig` (never hardcode it):
 
 ```kotlin
 val config = MyDramaConfig.build {
-    baseUrl("https://your-worker-url.workers.dev")
+    baseUrl(BuildConfig.MYDRAMA_BASE_URL)
     registerSessionOnInitialize(true)
 }
 
-val myDrama = MyDramaSDK.initialize(context, apiKey, config)
+val myDrama = MyDramaSDK.initialize(context, BuildConfig.MYDRAMA_API_KEY, config)
 ```
 
 Java:
 
 ```java
 MyDramaConfig config = MyDramaConfig.builder()
-        .baseUrl("https://staging.example.com")
+        .baseUrl(BuildConfig.MYDRAMA_BASE_URL)
         .registerSessionOnInitialize(true)
         .build();
-MyDramaClient client = MyDramaSDK.initialize(context, apiKey, config);
+MyDramaClient client = MyDramaSDK.initialize(context, BuildConfig.MYDRAMA_API_KEY, config);
 ```
 
 HTTPS is required except for `localhost`, `127.0.0.1`, and `::1`.
@@ -173,6 +220,22 @@ message.
   port.
 - Android application sandboxing protects the generated installation UUID and
   cached session. Clearing app data creates a new installation.
+
+## Fire TV and Fire Tablet
+
+The SDK has no dependency on Google Play Services and works on Amazon Fire OS
+devices out of the box:
+
+| Device family | Fire OS | Android API | Supported |
+|---------------|---------|-------------|-----------|
+| Fire TV Stick (2nd gen+) | Fire OS 5+ | API 22+ | ✓ |
+| Fire TV Cube / 4K | Fire OS 6/7 | API 25/28 | ✓ |
+| Fire HD / Fire 7 tablet | Fire OS 7 | API 28 | ✓ |
+
+No extra setup is needed — just initialize the SDK the same way as on a
+standard Android device. The SDK detects the device manufacturer and model via
+`Build.MANUFACTURER` / `Build.MODEL` and includes them in telemetry headers,
+so your Worker can distinguish Fire TV requests from phone requests.
 
 ## Consumer shrinking
 
