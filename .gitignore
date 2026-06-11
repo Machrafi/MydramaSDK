@@ -1,0 +1,39 @@
+# Gradle
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# Local config
+local.properties
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing
+*.jks
+*.keystore
+!debug.keystore
+
+# macOS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+*.local
