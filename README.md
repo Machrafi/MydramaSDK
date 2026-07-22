@@ -1,4 +1,4 @@
-# MyDrama Android SDK
+# DramaSDK Android client
 
 Kotlin-first Android client for the MyDrama Worker API, with Java interop and
 an OkHttp integration. The SDK registers an installation session, caches the
@@ -33,10 +33,15 @@ dependencies {
 }
 ```
 
-## Hiding the API key and base URL
+## Keep configuration out of source control
 
-Never put your API key or Worker URL as a plain string in source code — they
-will be visible in your git history and any release ZIP downloaded from GitHub.
+Never put your API key or Worker URL directly in source code. The pattern below
+keeps them out of git history and source archives.
+
+`BuildConfig` values are compiled into the APK and can be extracted by a
+determined user. Treat the token as an app bootstrap credential, not as an
+unextractable secret. DramaSDK limits the damage with package binding, edge
+expiry, request quotas, revocation, and short-lived session tokens.
 
 Instead, store them in `local.properties` (which is excluded from version
 control by default) and inject them into your app via `BuildConfig`:
@@ -75,8 +80,9 @@ MyDramaSDK.initialize(
 )
 ```
 
-This way the key is never in source, never in the git history, and never in a
-GitHub release ZIP.
+This keeps the key out of source, git history, and GitHub source releases. Use
+separate tokens per application and rotate one immediately if an APK or build
+system is compromised.
 
 ## Initialize
 
