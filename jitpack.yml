@@ -1,6 +1,7 @@
 jdk:
   - openjdk17
 before_install:
+  - git config --global --add safe.directory /build
   - chmod +x gradlew
 install:
-  - ./gradlew :mydrama-sdk:publishReleasePublicationToMavenLocal
+  - ./gradlew :mydrama-sdk:publishReleasePublicationToMavenLocal --no-daemon || (sleep 10; ./gradlew :mydrama-sdk:publishReleasePublicationToMavenLocal --no-daemon)
