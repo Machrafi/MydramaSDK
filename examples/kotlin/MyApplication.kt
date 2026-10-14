@@ -15,9 +15,6 @@ class MyApplication : Application() {
         val client = MyDramaSDK.initialize(
             this,
             BuildConfig.MYDRAMA_API_KEY,
-            MyDramaConfig.build {
-                baseUrl(BuildConfig.MYDRAMA_BASE_URL)
-            },
         )
 
         client.newCall("api/home?lang=en").enqueue(object : Callback {

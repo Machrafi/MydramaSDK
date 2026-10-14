@@ -6,10 +6,8 @@ import org.junit.Test
 
 class MyDramaConfigTest {
     @Test
-    fun builderRequiresBaseUrl() {
-        assertThrows(IllegalStateException::class.java) {
-            MyDramaConfig.Builder().build()
-        }
+    fun builderDefaultsToOfficialApi() {
+        assertEquals("https://sdk.dramasdk.com/", MyDramaConfig.Builder().build().baseUrl.toString())
     }
 
     @Test
@@ -33,4 +31,11 @@ class MyDramaConfigTest {
         val config = MyDramaConfig.build { baseUrl("http://localhost:8787") }
         assertEquals("http://localhost:8787/", config.baseUrl.toString())
     }
+    @Test
+    fun rejectsCredentialsAndQueryInBaseUrl() {
+        for (url in listOf("https://user:pass@example.com", "https://example.com?key=secret", "https://example.com/#fragment")) {
+            assertThrows(IllegalArgumentException::class.java) { MyDramaConfig.build { baseUrl(url) } }
+        }
+    }
+
 }

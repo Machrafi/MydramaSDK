@@ -2,42 +2,27 @@ package com.mydrama.sdk.internal
 
 import android.content.Context
 
+/** Short-lived bearer tokens stay in memory and are never written into backups. */
 internal class SessionStore(context: Context, storageKey: String) {
-    private val preferences = context.getSharedPreferences(
-        "com.mydrama.sdk.session.$storageKey",
-        Context.MODE_PRIVATE,
-    )
+    private var current: StoredSession? = null
+
+    init {
+        // Remove plaintext session material left by SDK 1.0.x.
+        context.getSharedPreferences("com.mydrama.sdk.session.$storageKey", Context.MODE_PRIVATE)
+            .edit().clear().apply()
+    }
 
     @Synchronized
     fun read(nowEpochMillis: Long): StoredSession? {
-        val token = preferences.getString("token", null) ?: return null
-        val expiresAt = preferences.getLong("expires_at", 0L)
-        return StoredSession(token, expiresAt).takeIf {
-            it.expiresAtEpochMillis - REFRESH_SKEW_MILLIS > nowEpochMillis
-        }
+        if (current?.let { it.expiresAtEpochMillis - 30_000L <= nowEpochMillis } == true) current = null
+        return current
     }
 
     @Synchronized
-    fun write(session: StoredSession) {
-        check(
-            preferences.edit()
-                .putString("token", session.token)
-                .putLong("expires_at", session.expiresAtEpochMillis)
-                .commit(),
-        ) { "Unable to persist the MyDrama session." }
-    }
+    fun write(session: StoredSession) { current = session }
 
     @Synchronized
-    fun clear() {
-        preferences.edit().clear().apply()
-    }
-
-    companion object {
-        private const val REFRESH_SKEW_MILLIS = 30_000L
-    }
+    fun clear() { current = null }
 }
 
-internal data class StoredSession(
-    val token: String,
-    val expiresAtEpochMillis: Long,
-)
+internal data class StoredSession(val token: String, val expiresAtEpochMillis: Long)

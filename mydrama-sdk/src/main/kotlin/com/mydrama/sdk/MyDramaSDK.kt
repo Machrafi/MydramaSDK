@@ -10,13 +10,14 @@ object MyDramaSDK {
     private var currentClient: MyDramaClient? = null
 
     /**
-     * Initializes the SDK. A base URL must be provided via [MyDramaConfig].
+     * Initializes the SDK. Defaults to the official DramaSDK API; [MyDramaConfig] supports custom deployments.
      */
     @JvmStatic
+    @JvmOverloads
     fun initialize(
         context: Context,
         apiKey: String,
-        config: MyDramaConfig,
+        config: MyDramaConfig = MyDramaConfig.builder().build(),
     ): MyDramaClient {
         validateApiKey(apiKey)
         return MyDramaClient.create(context.applicationContext, apiKey, config).also {
@@ -42,6 +43,6 @@ object MyDramaSDK {
 
     private fun validateApiKey(apiKey: String) {
         require(apiKey.isNotBlank()) { "MyDrama API key must not be blank." }
-        require(apiKey.none(Char::isWhitespace)) { "MyDrama API key must not contain whitespace." }
+        require(apiKey.length <= 4096 && apiKey.all { it.code in 33..126 }) { "MyDrama API key must not contain whitespace." }
     }
 }

@@ -1,7 +1,7 @@
 package com.mydrama.sdk
 
 /**
- * Result returned by the Worker's `/api/session/register` endpoint.
+ * Result returned by the DramaSDK API’s `/api/session/register` endpoint.
  */
 data class SessionRegistration @JvmOverloads constructor(
     val registered: Boolean,

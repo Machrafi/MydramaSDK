@@ -1,268 +1,175 @@
-# DramaSDK Android client
+# Official DramaSDK Android SDK
 
-Kotlin-first Android client for the MyDrama Worker API, with Java interop and
-an OkHttp integration. The SDK registers an installation session, caches the
-short-lived session token, and adds the Worker authentication and telemetry
-headers to requests.
+Build short drama apps with **DramaSDK**, the official Android client for the
+[DramaSDK API](https://sdk.dramasdk.com/docs). Load series, chapters and current
+video URLs through one API, with automatic application identity, Secure Token
+headers and short-lived installation sessions.
 
-## Requirements
-
-- Android API 21+
-- Java 11 bytecode
-- Kotlin or Java
-- OkHttp 4.x
-- No Google Play Services required — works on Fire TV, Fire Tablet, and AOSP devices
+Supports Kotlin and Java, Android 5.0+ (API 21), Fire TV, Fire Tablet and AOSP.
+Google Play Services are not required. Java 11 bytecode; OkHttp 4.x.
 
 ## Install
 
-### JitPack
-
-Add JitPack to dependency resolution:
+Add JitPack to your project's repositories:
 
 ```kotlin
-repositories {
-    maven("https://jitpack.io")
-}
+maven { url = uri("https://jitpack.io") }
 ```
 
-Then add the dependency:
+Add the official SDK:
 
 ```kotlin
-dependencies {
-    implementation("com.github.Machrafi:MydramaSDK:v1.0.1")
-}
+implementation("com.github.Machrafi:MydramaSDK:v1.1.0")
 ```
 
-## Keep configuration out of source control
+## Connect your app
 
-Never put your API key or Worker URL directly in source code. The pattern below
-keeps them out of git history and source archives.
+1. Register your actual Android `applicationId` at [DramaSDK](https://dramasdk.com).
+2. Copy the app's active **Secure Token**. This is your SDK API key.
+3. Store it outside source control and initialize the SDK once in `Application.onCreate`.
 
-`BuildConfig` values are compiled into the APK and can be extracted by a
-determined user. Treat the token as an app bootstrap credential, not as an
-unextractable secret. DramaSDK limits the damage with package binding, edge
-expiry, request quotas, revocation, and short-lived session tokens.
+In your private `local.properties`:
 
-Instead, store them in `local.properties` (which is excluded from version
-control by default) and inject them into your app via `BuildConfig`:
-
-**`local.properties`** (never commit this file):
 ```properties
-MYDRAMA_API_KEY=your-secret-api-key-here
-MYDRAMA_BASE_URL=https://your-worker.workers.dev
+DRAMASDK_API_KEY=YOUR_APP_SECURE_TOKEN
 ```
 
-**`app/build.gradle.kts`**:
+In `app/build.gradle.kts`, inject it into BuildConfig. JSON encoding safely
+escapes the string instead of interpolating an unescaped key into generated code:
+
 ```kotlin
 import java.util.Properties
+import groovy.json.JsonOutput
 
 val localProps = Properties().apply {
-    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+    rootProject.file("local.properties").takeIf { it.exists() }
+        ?.inputStream()?.use { load(it) }
 }
+val dramaKey = providers.environmentVariable("DRAMASDK_API_KEY").orNull
+    ?: localProps.getProperty("DRAMASDK_API_KEY", "")
 
 android {
+    buildFeatures { buildConfig = true }
     defaultConfig {
-        buildConfigField("String", "MYDRAMA_API_KEY",
-            "\"${localProps["MYDRAMA_API_KEY"] ?: ""}\"")
-        buildConfigField("String", "MYDRAMA_BASE_URL",
-            "\"${localProps["MYDRAMA_BASE_URL"] ?: ""}\"")
+        buildConfigField("String", "DRAMASDK_API_KEY", JsonOutput.toJson(dramaKey))
     }
 }
 ```
 
-Then use in code (as shown in the `examples/` folder):
+Initialize using the official API by default:
 
 ```kotlin
-MyDramaSDK.initialize(
-    this,
-    BuildConfig.MYDRAMA_API_KEY,
-    MyDramaConfig.build { baseUrl(BuildConfig.MYDRAMA_BASE_URL) },
-)
+val drama = MyDramaSDK.initialize(applicationContext, BuildConfig.DRAMASDK_API_KEY)
 ```
-
-This keeps the key out of source, git history, and GitHub source releases. Use
-separate tokens per application and rotate one immediately if an APK or build
-system is compromised.
-
-## Initialize
-
-Initialize once, normally from `Application.onCreate`. Use `BuildConfig` fields
-for the API key and URL — see [Hiding the API key and base URL](#hiding-the-api-key-and-base-url):
-
-```kotlin
-val myDrama = MyDramaSDK.initialize(
-    applicationContext,
-    BuildConfig.MYDRAMA_API_KEY,
-    MyDramaConfig.build {
-        baseUrl(BuildConfig.MYDRAMA_BASE_URL)
-    },
-)
-```
-
-Initialization schedules session registration in the background. It never
-logs the API key, session token, or request headers.
 
 Java:
 
 ```java
-MyDramaConfig config = MyDramaConfig.builder()
-        .baseUrl(BuildConfig.MYDRAMA_BASE_URL)
-        .build();
-MyDramaClient myDrama =
-        MyDramaSDK.initialize(getApplicationContext(), BuildConfig.MYDRAMA_API_KEY, config);
+MyDramaClient drama = MyDramaSDK.initialize(this, BuildConfig.DRAMASDK_API_KEY);
 ```
+
+The SDK supplies `X-App-Package-ID` from the installed application, your
+`X-App-Secure-Token`, installation metadata and a valid session bearer token when
+available. Register the exact package name—changing headers cannot provision a
+new application.
 
 ## Make requests
 
-The bundled client is the simplest integration:
+Each method returns an OkHttp `Call`. Use `enqueue()` or run `execute()` on a
+background thread; always close the response.
 
 ```kotlin
-val call = myDrama.newCall("api/home?lang=en")
-call.enqueue(callback)
+drama.home(lang = "en", pageSize = 10).enqueue(object : okhttp3.Callback {
+    override fun onFailure(call: okhttp3.Call, error: java.io.IOException) {
+        // Show a retry message. Do not log credentials or authorization headers.
+    }
+    override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+        response.use {
+            if (!it.isSuccessful) {
+                // 401: authentication/session; 403: access; 429: quota/rate limit.
+                return
+            }
+            val json = org.json.JSONObject(it.body?.string().orEmpty())
+            val categories = json.getJSONObject("data").getJSONArray("categories")
+            // Read stories and keep the exact story_id returned by DramaSDK.
+        }
+    }
+})
 ```
-
-To keep an existing OkHttp configuration:
 
 ```kotlin
-val okHttp = myDrama.installOn(
-    existingClient.newBuilder(),
-).build()
+drama.detail(storyId)
+drama.chapters(storyId, index = 1, episodePageSize = 100)
+drama.stream(storyId, episode = 1)
+// Or use the documented API contract directly:
+drama.newCall("api/search?keyword=love&lang=en")
 ```
 
-The interceptor only adds credentials when the request origin exactly matches
-the configured Worker origin. Requests to other hosts are passed through
-without MyDrama headers.
+| Request | Endpoint |
+|---|---|
+| Home series | `GET /api/home` |
+| Search | `GET /api/search?keyword=...` |
+| Series detail | `GET /api/detail/{story_id}/v2` |
+| Chapters | `GET /api/chapters/{story_id}` |
+| Current playback URL | `GET /api/stream?bookId=...&episode=1` |
+| Installation session | `POST /api/session/register` (handled by SDK) |
 
-## Custom Worker URL
+Responses contain catalog data under `data.categories[].stories[]`. Read the
+pagination fields and request subsequent chapter pages when indicated. Resolve
+playback through `stream()` when the user opens an episode; signed video URLs may
+expire. Pass the returned `video_url` to your player with a separate media client.
+Do not attach API keys to third-party video hosts or store signed URLs permanently.
+A catalog response alone does not prove that every video plays.
 
-Set your Worker URL in the config using `BuildConfig` (never hardcode it):
+## Sessions and security
+
+The SDK starts session registration in the background. You can wait explicitly
+from a background thread using `drama.registerSession()` or use
+`drama.registerSessionAsync(callback)`. Session failures are reported through the
+callback; normal API requests still use the app-bound Secure Token.
+
+Version 1.1.0 keeps session tokens in memory, clears the matching old plaintext
+session preferences and blocks redirects on SDK-managed clients. When installed
+on an existing OkHttp client, a network interceptor strips SDK credentials and
+installation headers before a redirect reaches a different origin. `newCall()`
+rejects external origins. Normal platform TLS verification remains enabled.
+
+Use a separate token per app, enforce access and quotas on the server, and revoke
+or replace compromised tokens from the dashboard. Keep keys out of Git, screenshots,
+analytics, crash reports and HTTP logs. If adding an HTTP logger, redact
+`X-App-Secure-Token` and `Authorization`.
+
+**An APK cannot hold an unextractable API key.** Package headers and device metadata
+are not cryptographic proof of app identity. These protections reduce credential
+exposure; server authentication, revocation and quotas remain necessary. No SDK
+can promise to prevent all scraping or reverse engineering.
+
+## Custom deployment
+
+The default is `https://sdk.dramasdk.com/`. For your own compatible deployment:
 
 ```kotlin
-val config = MyDramaConfig.build {
-    baseUrl(BuildConfig.MYDRAMA_BASE_URL)
-    registerSessionOnInitialize(true)
-}
-
-val myDrama = MyDramaSDK.initialize(context, BuildConfig.MYDRAMA_API_KEY, config)
+val config = MyDramaConfig.build { baseUrl("https://your-api.example/") }
+val drama = MyDramaSDK.initialize(applicationContext, BuildConfig.DRAMASDK_API_KEY, config)
 ```
 
-Java:
+Remote API URLs must use HTTPS and cannot contain credentials, query parameters
+or fragments. HTTP is permitted only for loopback development. SDK-managed clients
+do not follow redirects; configure the final API origin directly.
 
-```java
-MyDramaConfig config = MyDramaConfig.builder()
-        .baseUrl(BuildConfig.MYDRAMA_BASE_URL)
-        .registerSessionOnInitialize(true)
-        .build();
-MyDramaClient client = MyDramaSDK.initialize(context, BuildConfig.MYDRAMA_API_KEY, config);
+## Upgrade from 1.0.x
+
+Use version `v1.1.0`, replace custom legacy API configuration with the default
+DramaSDK origin, and keep your registered package and current token. Public
+`com.mydrama.sdk` class names remain compatible. Session tokens are registered
+again after process restarts. Review redirect assumptions if reusing the SDK client.
+
+## Build
+
+```sh
+./gradlew :mydrama-sdk:testDebugUnitTest :mydrama-sdk:assembleRelease
 ```
 
-HTTPS is required except for `localhost`, `127.0.0.1`, and `::1`.
-
-## Worker contract
-
-Session registration calls:
-
-```text
-POST /api/session/register
-X-App-Package-ID: <application package>
-X-App-Secure-Token: <SDK API key>
-X-App-Instance-ID: <persisted random UUID>
-X-App-Elapsed-Realtime-MS: <SystemClock.elapsedRealtime()>
-Content-Type: application/json
-```
-
-The generated UUID is stored in private `SharedPreferences`. The SDK does not
-read or store Android ID, IMEI, serial number, advertising ID, MAC address, or
-another raw hardware identifier.
-
-Each Worker request carries:
-
-- `X-App-Package-ID`
-- `X-App-Secure-Token`
-- `X-App-Instance-ID`
-- `X-App-Elapsed-Realtime-MS`
-- `X-MyDrama-SDK-Version`
-- `X-App-Version`
-- `X-Android-API-Level`
-- `X-Device-Manufacturer`
-- `X-Device-Model`
-- `X-App-Locale`
-- `User-Agent: MyDrama-Android-SDK/<version> (...)`
-- `Authorization: Bearer <sessionToken>` when a valid session is cached
-
-The bootstrap credential remains attached because the current Worker supports
-both the secure-token and session-JWT authentication paths. The Worker chooses
-the bearer session when present.
-
-## Session lifecycle
-
-`initialize` registers asynchronously by default. To explicitly await a
-registration from a background thread:
-
-```kotlin
-val registration = myDrama.registerSession()
-```
-
-Or use the Java-compatible callback and `Future`:
-
-```kotlin
-myDrama.registerSessionAsync { registration, error ->
-    if (error == null) println(registration?.mode)
-}
-```
-
-Tokens are persisted privately and refreshed when fewer than 30 seconds
-remain. Registration errors fail the returned `Future`, are supplied to the
-callback when present, and never expose the credential in the exception
-message.
-
-## Security notes
-
-- Treat the SDK key as an app bootstrap credential, not a user password.
-- Do not add a BODY-level HTTP logger to the authenticated client in release
-  builds. If logging is necessary in debug builds, redact `Authorization` and
-  `X-App-Secure-Token`.
-- Credential headers are scoped to the configured Worker scheme, host, and
-  port.
-- Android application sandboxing protects the generated installation UUID and
-  cached session. Clearing app data creates a new installation.
-
-## Fire TV and Fire Tablet
-
-The SDK has no dependency on Google Play Services and works on Amazon Fire OS
-devices out of the box:
-
-| Device family | Fire OS | Android API | Supported |
-|---------------|---------|-------------|-----------|
-| Fire TV Stick (2nd gen+) | Fire OS 5+ | API 22+ | ✓ |
-| Fire TV Cube / 4K | Fire OS 6/7 | API 25/28 | ✓ |
-| Fire HD / Fire 7 tablet | Fire OS 7 | API 28 | ✓ |
-
-No extra setup is needed — just initialize the SDK the same way as on a
-standard Android device. The SDK detects the device manufacturer and model via
-`Build.MANUFACTURER` / `Build.MODEL` and includes them in telemetry headers,
-so your Worker can distinguish Fire TV requests from phone requests.
-
-## Consumer shrinking
-
-Consumer ProGuard rules are packaged in the AAR. No application rule is
-normally required. OkHttp's standard consumer rules are supplied by OkHttp.
-
-## Build and test
-
-```bash
-./gradlew clean test lint assembleRelease
-```
-
-Publish to the local Maven repository:
-
-```bash
-./gradlew :mydrama-sdk:publishReleasePublicationToMavenLocal
-```
-
-Optional signing uses `SIGNING_KEY` and `SIGNING_PASSWORD` environment
-variables. JitPack can build the publication with the included `jitpack.yml`.
-
-## License
-
-Apache License 2.0.
+API reference: [sdk.dramasdk.com/docs](https://sdk.dramasdk.com/docs).
+Developer dashboard: [dramasdk.com](https://dramasdk.com).
+Source and releases: [Machrafi/MydramaSDK](https://github.com/Machrafi/MydramaSDK).

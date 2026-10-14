@@ -104,4 +104,32 @@ class WorkerContractTest {
         assertNull(leakedRequest.getHeader("X-App-Package-ID"))
         assertFalse(leakedRequest.headers.toString().contains("sk_live_contract_test"))
     }
+    @Test
+    fun redirectsCannotCarrySdkCredentialsToAnotherOrigin() {
+        worker.enqueue(MockResponse().setResponseCode(302).setHeader("Location", external.url("/capture")))
+        external.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        val client = MyDramaSDK.initialize(context, "test-secret", MyDramaConfig.build {
+            baseUrl(worker.url("/").toString()); registerSessionOnInitialize(false)
+        })
+        val sharedClient = client.installOn(OkHttpClient.Builder()).build()
+        sharedClient.newCall(Request.Builder().url(worker.url("/api/home")).build()).execute().close()
+        assertEquals("test-secret", worker.takeRequest().getHeader("X-App-Secure-Token"))
+        val redirected = external.takeRequest()
+        assertNull(redirected.getHeader("X-App-Secure-Token"))
+        assertNull(redirected.getHeader("X-App-Package-ID"))
+        assertNull(redirected.getHeader("X-App-Instance-ID"))
+        assertNull(redirected.getHeader("Authorization"))
+    }
+
+    @Test
+    fun sdkCallsRejectExternalOriginsAndEncodeStoryIds() {
+        val client = MyDramaSDK.initialize(context, "test-secret", MyDramaConfig.build {
+            baseUrl(worker.url("/").toString()); registerSessionOnInitialize(false)
+        })
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { client.newCall(external.url("/api/home").toString()) }
+        assertEquals("/api/chapters/id%2Fwith%3Fspecial", client.chapters("id/with?special").request().url.encodedPath)
+        assertEquals("id&episode=999", client.stream("id&episode=999").request().url.queryParameter("bookId"))
+        assertEquals("1", client.stream("id&episode=999").request().url.queryParameter("episode"))
+    }
+
 }

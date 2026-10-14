@@ -20,6 +20,7 @@ internal class MyDramaInterceptor(
         }
 
         val builder = original.newBuilder()
+            .tag(SdkAuthenticatedRequest::class.java, SdkAuthenticatedRequest())
             .header("X-App-Secure-Token", apiKey)
             .header("X-App-Instance-ID", installationId)
         for ((name, value) in metadata.headers(elapsedRealtime())) {

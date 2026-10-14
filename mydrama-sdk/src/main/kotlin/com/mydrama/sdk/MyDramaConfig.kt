@@ -17,7 +17,7 @@ class MyDramaConfig private constructor(
     val registerSessionOnInitialize: Boolean,
 ) {
     class Builder {
-        private var baseUrl: HttpUrl? = null
+        private var baseUrl: HttpUrl? = "https://sdk.dramasdk.com/".toHttpUrl()
         private var connectTimeoutMillis: Long = TimeUnit.SECONDS.toMillis(15)
         private var readTimeoutMillis: Long = TimeUnit.SECONDS.toMillis(30)
         private var writeTimeoutMillis: Long = TimeUnit.SECONDS.toMillis(30)
@@ -26,6 +26,9 @@ class MyDramaConfig private constructor(
         fun baseUrl(baseUrl: String) = apply {
             val normalized = baseUrl.trim().let { if (it.endsWith('/')) it else "$it/" }
             this.baseUrl = normalized.toHttpUrl()
+            require(this.baseUrl!!.username.isEmpty() && this.baseUrl!!.password.isEmpty() && this.baseUrl!!.query == null && this.baseUrl!!.fragment == null) {
+                "Base URL must not contain credentials, query parameters, or fragments."
+            }
             require(this.baseUrl!!.isHttps || isLocalhost(this.baseUrl!!.host)) {
                 "MyDrama base URL must use HTTPS (HTTP is allowed only for localhost)."
             }
