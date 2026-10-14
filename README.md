@@ -115,7 +115,10 @@ drama.newCall("api/search?keyword=love&lang=en")
 | Installation session | `POST /api/session/register` (handled by SDK) |
 
 Responses contain catalog data under `data.categories[].stories[]`. Read the
-pagination fields and request subsequent chapter pages when indicated. Resolve
+pagination fields and request subsequent chapter pages when indicated. Locked or
+unavailable chapters are hidden: build your episode list from returned episodes,
+not from total_episodes. Original episode numbers can have gaps. Series counts
+describe visible catalog entries, not fully unlocked series or verified videos. Resolve
 playback through `stream()` when the user opens an episode; signed video URLs may
 expire. Pass the returned `video_url` to your player with a separate media client.
 Do not attach API keys to third-party video hosts or store signed URLs permanently.
